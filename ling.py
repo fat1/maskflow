@@ -48,12 +48,13 @@ def _api_key() -> str:
 def _chat(messages: list) -> str:
     payload = {"model": MODEL, "max_tokens": 4000, "messages": messages}
     headers = {"Authorization": f"Bearer {_api_key()}"}
-    for attempt in range(3):
+    for delay in (3, 8, 15, None):
         response = requests.post(API_URL, json=payload, headers=headers, timeout=90)
-        if response.status_code != 429 or attempt == 2:
+        if response.status_code != 429 or delay is None:
             break
-        time.sleep(1 + attempt)
-    response.raise_for_status()
+        time.sleep(delay)
+    if not response.ok:
+        raise RuntimeError(f"Ling API {response.status_code}: {response.text[:300]}")
     return response.json()["choices"][0]["message"]["content"] or ""
 
 
