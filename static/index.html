@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MaskFlow</title>
+<style>
+  :root { --bg:#f6f5f1; --panel:#fff; --ink:#1c1d1f; --muted:#6b6e73; --line:#dfddd6; --accent:#0b6e4f; --bad:#b3261e; --code:#17191c; --codeink:#e6e6e1; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#141517; --panel:#1e2023; --ink:#ecece8; --muted:#a0a3a8; --line:#34373b; --accent:#4fc79a; --bad:#ff8a80; --code:#0e0f11; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.6 system-ui,"Microsoft YaHei",sans-serif; }
+  main { max-width:1000px; margin:0 auto; padding:32px 16px 64px; }
+  header { display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:8px; margin-bottom:20px; }
+  h1 { margin:0; font-size:24px; }
+  .muted { color:var(--muted); font-size:13px; }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:20px; margin-bottom:16px; }
+  label { display:block; font-weight:600; margin:0 0 6px; }
+  input[type=file], textarea { width:100%; font:inherit; color:inherit; background:transparent; border:1px solid var(--line); border-radius:6px; padding:9px; margin-bottom:12px; }
+  textarea { min-height:76px; resize:vertical; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
+  .chip { font:inherit; font-size:13px; color:inherit; background:transparent; border:1px solid var(--line); border-radius:99px; padding:3px 11px; cursor:pointer; }
+  #go { font:inherit; font-weight:600; color:#fff; background:var(--accent); border:0; border-radius:6px; padding:9px 22px; cursor:pointer; }
+  @media (prefers-color-scheme: dark) { #go { color:#0c1512; } }
+  #go:disabled { opacity:.5; cursor:default; }
+  progress { width:100%; height:8px; accent-color:var(--accent); }
+  #error { color:var(--bad); white-space:pre-wrap; }
+  pre { background:var(--code); color:var(--codeink); padding:14px; border-radius:6px; overflow-x:auto; font:13px/1.5 Consolas,monospace; margin:0; }
+  .videos { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:12px; }
+  video { width:100%; border-radius:6px; background:#000; display:block; }
+  .stats { margin:12px 0 0; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div><h1>MaskFlow</h1><div class="muted">用一句话描述打码规则，视频只在本地 GPU 上处理</div></div>
+    <div class="muted" id="device"></div>
+  </header>
+
+  <section>
+    <form id="form">
+      <label for="video">视频（最长 3600 帧，200MB 以内）</label>
+      <input id="video" type="file" accept="video/*" required>
+      <label for="rule">打码规则</label>
+      <textarea id="rule" required maxlength="500">遮挡所有人脸，但穿红色衣服的人不打码</textarea>
+      <div class="chips" id="chips">
+        <button type="button" class="chip">遮挡所有人脸</button>
+        <button type="button" class="chip">只遮挡画面左半边的人脸</button>
+        <button type="button" class="chip">前 2 秒不处理，之后遮挡所有人和车辆</button>
+        <button type="button" class="chip">遮挡屏幕、手机和笔记本电脑</button>
+      </div>
+      <button id="go">开始处理</button>
+    </form>
+  </section>
+
+  <section id="statusBox" hidden>
+    <label id="stage"></label>
+    <progress id="bar" max="1"></progress>
+    <div id="error" hidden></div>
+    <div class="muted stats" id="stats"></div>
+  </section>
+
+  <section id="codeBox" hidden>
+    <label>Ling-3.2-flash 为这条规则生成的代码</label>
+    <pre id="code"></pre>
+  </section>
+
+  <section id="resultBox" hidden>
+    <div class="videos">
+      <div><label>原视频</label><video id="before" controls muted></video></div>
+      <div><label>处理后</label><video id="after" controls muted></video></div>
+    </div>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+fetch('/api/system').then(r => r.json()).then(s => $('device').textContent = '运行设备：' + s.device);
+$('chips').addEventListener('click', e => { if (e.target.matches('.chip')) $('rule').value = e.target.textContent; });
+
+function showStats(s) {
+  if (s.masked === undefined) return;
+  $('stats').textContent = `${s.frames} 帧 · ${s.detections} 个检测 · 打码 ${s.masked} 个 · Ling ${s.ling_seconds}s · 检测 ${s.detect_seconds}s${s.cache_hit ? '（使用缓存）' : ''} · 编码 ${s.render_seconds}s`;
+}
+
+async function poll(id) {
+  const job = await (await fetch('/api/jobs/' + id)).json();
+  if (job.code) { $('codeBox').hidden = false; $('code').textContent = job.code; }
+  if (job.status === 'done' || job.status === 'failed') {
+    $('bar').hidden = true;
+    $('go').disabled = false;
+    if (job.status === 'failed') {
+      $('stage').textContent = '处理失败';
+      $('error').hidden = false;
+      $('error').textContent = job.error;
+      return;
+    }
+    $('stage').textContent = '处理完成';
+    showStats(job.stats);
+    $('before').src = `/api/jobs/${id}/input`;
+    $('after').src = `/api/jobs/${id}/output`;
+    $('resultBox').hidden = false;
+    return;
+  }
+  $('stage').textContent = job.stage || '处理中';
+  if (job.progress === null) $('bar').removeAttribute('value'); else $('bar').value = job.progress;
+  setTimeout(() => poll(id), 800);
+}
+
+$('form').addEventListener('submit', async e => {
+  e.preventDefault();
+  $('go').disabled = true;
+  $('statusBox').hidden = false; $('bar').hidden = false;
+  $('error').hidden = true; $('codeBox').hidden = true; $('resultBox').hidden = true;
+  $('stats').textContent = ''; $('stage').textContent = '上传中';
+  $('bar').removeAttribute('value');
+  const body = new FormData();
+  body.append('video', $('video').files[0]);
+  body.append('rule', $('rule').value);
+  const response = await fetch('/api/jobs', { method: 'POST', body });
+  const data = await response.json();
+  if (!response.ok) {
+    $('stage').textContent = '提交失败'; $('bar').hidden = true;
+    $('error').hidden = false; $('error').textContent = data.detail;
+    $('go').disabled = false;
+    return;
+  }
+  poll(data.id);
+});
+</script>
+</body>
+</html>
