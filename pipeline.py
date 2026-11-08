@@ -89,14 +89,15 @@ def detect(video: Path, on_progress) -> dict:
 
     capture = cv2.VideoCapture(str(video))
     if not capture.isOpened():
-        raise ValueError("无法读取这个视频文件")
+        raise ValueError("无法读取这个视频文件 / Could not read this video file")
     fps = capture.get(cv2.CAP_PROP_FPS) or 25.0
     width = int(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
     if total > MAX_FRAMES:
         capture.release()
-        raise ValueError(f"视频过长：{total} 帧，演示版上限 {MAX_FRAMES} 帧")
+        raise ValueError(f"视频过长：{total} 帧，演示版上限 {MAX_FRAMES} 帧 / "
+                         f"Video too long: {total} frames, demo limit is {MAX_FRAMES}")
 
     items, index = [], 0
     options = {"imgsz": 640, "device": DEVICE, "half": HALF, "verbose": False, "conf": 0.3}
@@ -145,7 +146,7 @@ def detect(video: Path, on_progress) -> dict:
 
     capture.release()
     if index == 0:
-        raise ValueError("视频里没有可读取的帧")
+        raise ValueError("视频里没有可读取的帧 / The video has no readable frames")
     return {"fps": fps, "width": width, "height": height, "frames": index, "items": items}
 
 
@@ -168,14 +169,14 @@ def apply_rule(code: str, items: list) -> list:
         capture_output=True, timeout=30,
     )
     if completed.returncode != 0:
-        raise RuntimeError("规则执行失败: " + completed.stderr.decode(errors="replace")[-500:])
+        raise RuntimeError("规则执行失败 / Rule execution failed: " + completed.stderr.decode(errors="replace")[-500:])
     return json.loads(completed.stdout)
 
 
 def render(video: Path, output: Path, detections: dict, decisions: list, on_progress) -> int:
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
-        raise RuntimeError("找不到 ffmpeg")
+        raise RuntimeError("找不到 ffmpeg / ffmpeg not found")
 
     frames_to_boxes = defaultdict(list)
     masked = 0
@@ -220,7 +221,7 @@ def render(video: Path, output: Path, detections: dict, decisions: list, on_prog
                 pass
             process.wait()
     if process.returncode != 0:
-        raise RuntimeError("NVENC 编码失败: " + log_path.read_text(errors="replace")[-500:])
+        raise RuntimeError("NVENC 编码失败 / NVENC encoding failed: " + log_path.read_text(errors="replace")[-500:])
     return masked
 
 

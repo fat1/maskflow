@@ -36,25 +36,25 @@ def _run(job: dict) -> None:
         job["progress"] = progress
 
     video, output = Path(job["input"]), Path(job["output"])
-    stage("Ling-3.2-flash 生成规则代码")
+    stage("ling")
     started = time.perf_counter()
     job["code"] = ling.generate_rule(job["rule"])
     job["stats"]["ling_seconds"] = round(time.perf_counter() - started, 1)
 
-    stage("GPU 检测与跟踪", 0)
+    stage("detect", 0)
     started = time.perf_counter()
     detections, cache_hit = pipeline.load_or_detect(
-        video, _digest(video), lambda p: stage("GPU 检测与跟踪", p))
+        video, _digest(video), lambda p: stage("detect", p))
     job["stats"]["detect_seconds"] = round(time.perf_counter() - started, 1)
     job["stats"]["cache_hit"] = cache_hit
 
-    stage("沙箱执行规则")
+    stage("sandbox")
     decisions = pipeline.apply_rule(job["code"], detections["items"])
 
-    stage("打码并用 NVENC 编码", 0)
+    stage("render", 0)
     started = time.perf_counter()
     masked = pipeline.render(video, output, detections, decisions,
-                             lambda p: stage("打码并用 NVENC 编码", p))
+                             lambda p: stage("render", p))
     job["stats"].update(
         render_seconds=round(time.perf_counter() - started, 1),
         frames=detections["frames"],
@@ -98,9 +98,9 @@ async def create_job(rule: str = Form(...), video: UploadFile = File(...)) -> di
     rule = rule.strip()
     suffix = Path(video.filename or "").suffix.lower()
     if not rule or len(rule) > 500:
-        raise HTTPException(400, "规则不能为空，且不超过 500 字")
+        raise HTTPException(400, "规则不能为空，且不超过 500 字 / The rule must be 1-500 characters")
     if suffix not in ALLOWED_SUFFIXES:
-        raise HTTPException(400, "仅支持 mp4、mov、avi、mkv、webm")
+        raise HTTPException(400, "仅支持 mp4、mov、avi、mkv、webm / Only mp4, mov, avi, mkv and webm are supported")
 
     job_id = uuid.uuid4().hex
     folder = DATA / "jobs" / job_id
@@ -112,11 +112,11 @@ async def create_job(rule: str = Form(...), video: UploadFile = File(...)) -> di
             if size > MAX_UPLOAD_BYTES:
                 stream.close()
                 source.unlink()
-                raise HTTPException(413, "视频不能超过 200MB")
+                raise HTTPException(413, "视频不能超过 200MB / The video must be 200 MB or smaller")
             stream.write(chunk)
 
     jobs[job_id] = {
-        "id": job_id, "rule": rule, "status": "queued", "stage": "排队中",
+        "id": job_id, "rule": rule, "status": "queued", "stage": "queued",
         "progress": None, "code": None, "error": None, "stats": {},
         "input": str(source), "output": str(folder / "output.mp4"),
     }
@@ -126,7 +126,7 @@ async def create_job(rule: str = Form(...), video: UploadFile = File(...)) -> di
 
 def _job(job_id: str) -> dict:
     if job_id not in jobs:
-        raise HTTPException(404, "任务不存在")
+        raise HTTPException(404, "任务不存在 / Job not found")
     return jobs[job_id]
 
 
@@ -144,7 +144,7 @@ def get_input(job_id: str) -> FileResponse:
 def get_output(job_id: str) -> FileResponse:
     job = _job(job_id)
     if job["status"] != "done":
-        raise HTTPException(409, "任务尚未完成")
+        raise HTTPException(409, "任务尚未完成 / The job is not finished")
     return FileResponse(job["output"], media_type="video/mp4", filename="maskflow.mp4")
 
 
