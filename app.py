@@ -151,5 +151,5 @@ def get_output(job_id: str) -> FileResponse:
 if __name__ == "__main__":
     import uvicorn
 
-    # The sandbox has no OS-level isolation, so stay on localhost.
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    # LAN only: the sandbox has no OS-level isolation, so never expose this publicly.
+    uvicorn.run(app, host="0.0.0.0", port=8000)
