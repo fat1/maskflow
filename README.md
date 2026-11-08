@@ -72,7 +72,7 @@ python -m venv --system-site-packages .venv
 
 ### 许可证
 
-本项目尚未选择开源许可证。依赖项有各自的许可证，其中 Ultralytics YOLO 采用 AGPL-3.0 或商业授权。
+本项目代码采用 [MIT 许可证](LICENSE)。依赖项和模型权重不包含在本仓库中，并适用各自的许可证，其中 Ultralytics YOLO 采用 AGPL-3.0 或商业授权，分发或对外提供包含它的服务前请确认合规要求。
 
 ---
 
@@ -144,4 +144,4 @@ Open <http://127.0.0.1:8000>. Other devices on your network can use `http://<you
 
 ### License
 
-No open-source license has been chosen yet. Dependencies have their own licenses; Ultralytics YOLO is available under AGPL-3.0 or a commercial license.
+The code in this project is released under the [MIT License](LICENSE). Dependencies and model weights are not included in this repository and keep their own licenses. Ultralytics YOLO is available under AGPL-3.0 or a commercial license, so check its terms before distributing the project or offering it as a service.
